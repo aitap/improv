@@ -1,6 +1,9 @@
+#include <errno.h>
 #include <lauxlib.h>
 #include <limits.h>
 #include <lua.h>
+#include <signal.h>
+#include <string.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 
@@ -31,7 +34,7 @@ static int getsize(int fd, unsigned short * nrow, unsigned short * ncol) {
 static int Lgetsize(lua_State * L) {
 	int n = lua_gettop(L);
 	if (n != 1)
-		luaL_error(L, "Usage: nrow, ncol or nil, errno = setsize(fd)");
+		luaL_error(L, "Usage: (nrow, ncol) or (nil, error, errnum) = getsize(fd)");
 	lua_Integer fd = luaL_checkinteger(L, 1);
 	if (fd < 0 || fd > INT_MAX)
 		luaL_error(L, "fd must fit in a nonnegative int");
@@ -40,19 +43,22 @@ static int Lgetsize(lua_State * L) {
 	int ret = getsize((int)fd, &nrow, &ncol);
 
 	if (ret) {
+		int errnum = errno;
 		lua_pushnil(L);
-		lua_pushnumber(L, ret);
+		lua_pushstring(L, strerror(errnum));
+		lua_pushinteger(L, errnum);
+		return 3;
 	} else {
-		lua_pushnumber(L, nrow);
-		lua_pushnumber(L, ncol);
+		lua_pushinteger(L, nrow);
+		lua_pushinteger(L, ncol);
+		return 2;
 	}
-	return 2;
 }
 
 static int Lsetsize(lua_State * L) {
 	int n = lua_gettop(L);
 	if (n != 3)
-		luaL_error(L, "Usage: (0) or (nil, errno) = setsize(fd, nrow, ncol)");
+		luaL_error(L, "Usage: (true) or (nil, error, errnum) = setsize(fd, nrow, ncol)");
 	lua_Integer fd = luaL_checkinteger(L, 1),
 		nrow = luaL_checkinteger(L, 2),
 		ncol = luaL_checkinteger(L, 3);
@@ -66,11 +72,13 @@ static int Lsetsize(lua_State * L) {
 	int ret = setsize((int)fd, (unsigned short)nrow, (unsigned short)ncol);
 
 	if (ret) {
+		int errnum = errno;
 		lua_pushnil(L);
-		lua_pushnumber(L, ret);
-		return 2;
+		lua_pushstring(L, strerror(errnum));
+		lua_pushinteger(L, errnum);
+		return 3;
 	} else {
-		lua_pushnumber(L, 0);
+		lua_pushboolean(L, 1);
 		return 1;
 	}
 }
@@ -81,7 +89,9 @@ static luaL_Reg funcs[] = {
 	{ NULL, NULL }
 };
 
-int luaopen_tcwinsize(lua_State * L) {
+LUAMOD_API int luaopen_tcwinsize(lua_State * L) {
 	luaL_newlib(L, funcs);
+	lua_pushinteger(L, SIGWINCH);
+	lua_setfield(L, -2, "SIGWINCH");
 	return 1;
 }

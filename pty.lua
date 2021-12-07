@@ -1,5 +1,6 @@
 #!/usr/bin/lua5.3
 local P = require'posix'
+local W = require'tcwinsize'
 
 -- doesn't have to send all input, will be called again by the poll loop
 local function pump(from, to)
@@ -70,16 +71,29 @@ local function parent_loop(ptm)
 		[P.STDIN_FILENO] = { events = { IN = true } },
 		[      ptm     ] = { events = { IN = true } },
 	}
-	while P.poll(fds) do
+	repeat
+		local ret, _, errnum = P.poll(fds)
 		if fds[P.STDIN_FILENO].revents.IN then pump(P.STDIN_FILENO, ptm)
 		elseif fds[ptm].revents.IN then pump(ptm, P.STDOUT_FILENO)
-		else break end
-	end
+		else break end -- must have got a HUP due to child exiting
+	until not (
+		ret or (errnum == P.EINTR) -- poll always gets interrupted by signals
+	)
 end
 
 local ptm, ptsp = make_pty()
+
+-- must handle terminal resize
+local function winch()
+	assert(W.setsize(ptm, assert(W.getsize(P.STDIN_FILENO))))
+end
+P.signal(W.SIGWINCH, winch, P.SA_RESTART)
+winch() -- also set it initially
+
 local pid = assert(P.fork())
-if pid > 0 then parent_loop(ptm) else
+if pid > 0 then
+	parent_loop(ptm)
+else
 	assert(P.close(ptm))
 	child_exec(ptsp, 'R', {})
 end
