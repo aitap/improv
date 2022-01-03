@@ -12,16 +12,32 @@ local config = {
 	menu = '\x06', -- ^F
 }
 
+local function read(fd, sz)
+	local buf, errmsg
+	repeat
+		local errnum
+		buf, errmsg, errnum = P.read(fd, sz)
+	until buf or errnum ~= P.EINTR
+	assert(buf, errmsg)
+	return buf
+end
+
 -- keep trying until all of buf is written to the fd
 local function write(fd, buf)
 	local written = 0
 	while written < #buf do
-		written = written + assert(P.write(fd, buf:sub(written+1)))
+		local wr, errmsg
+		repeat
+			local errnum
+			wr, errmsg, errnum = P.write(fd, buf:sub(written + 1))
+		until wr or errnum ~= P.EINTR
+		assert(wr, errmsg)
+		written = written + wr
 	end
 end
 
 local function cli(stdin, child)
-	local buf = assert(P.read(stdin, 512))
+	local buf = read(stdin, 512)
 	for i = 1,#buf do
 		local ch = buf:sub(i)
 		if ch == config.next then
@@ -29,8 +45,8 @@ local function cli(stdin, child)
 		elseif ch == config.menu then
 			-- TODO: switch to menu mode
 		else
-			-- write interactive input symbol by symbol
-			write(child, buf:sub(i))
+			-- write interactive input byte by byte
+			write(child, buf:sub(i,i))
 		end
 	end
 end
@@ -88,21 +104,25 @@ local function parent_loop(ptm)
 	assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, cfmakeraw(att)))
 
 	local fds = {
-		[P.STDIN_FILENO] = { events = { IN = true } },
-		[      ptm     ] = { events = { IN = true } },
+		[P.STDIN_FILENO] = { events = { IN = true }, revents = {} },
+		[      ptm     ] = { events = { IN = true }, revents = {} },
 	}
-	repeat
+	while true do
 		local ret, _, errnum = P.poll(fds)
-		if fds[P.STDIN_FILENO].revents.IN then cli(P.STDIN_FILENO, ptm)
-		elseif fds[ptm].revents.IN then
-			-- doesn't have to send all input, will be called again by
-			-- the poll loop; but we do need a buffer large enough for a
-			-- typical screenful
-			write(P.STDOUT_FILENO, assert(P.read(ptm, 4096)))
-		else break end -- must have got a HUP due to child exiting
-	until not (
-		ret or (errnum == P.EINTR) -- poll always gets interrupted by signals
-	)
+		if ret then
+			if fds[P.STDIN_FILENO].revents.IN then
+				cli(P.STDIN_FILENO, ptm)
+			elseif fds[ptm].revents.IN then
+				write(P.STDOUT_FILENO, read(ptm, 4096))
+			elseif fds[P.STDIN_FILENO].revents.HUP or fds[ptm].revents.HUP then
+				-- child exiting or terminal closed
+				break
+			end
+		elseif errnum ~= P.EINTR then
+			-- failure other than "interrupted by signal we handled"
+			break
+		end
+	end
 end
 
 local ptm, ptsp = make_pty()
@@ -114,11 +134,11 @@ end
 winch() -- also set it initially
 
 local pid = assert(P.fork())
-if pid > 0 then
-	P.signal(W.SIGWINCH, winch, P.SA_RESTART)
-	parent_loop(ptm)
-else
+if pid == 0 then
 	if config.chdir then assert(P.chdir(config.chdir)) end
 	assert(P.close(ptm))
 	child_exec(ptsp, config.exec.path, config.exec.argv)
 end
+
+P.signal(W.SIGWINCH, winch) -- NB: there's no SA_RESTART in POSIX
+parent_loop(ptm)
