@@ -8,8 +8,8 @@ local config = {
 	chunks = {
 		"ls()\n", "?ls\n", "q()\n"
 	},
-	next = '\x05', -- ^E
-	menu = '\x06', -- ^F
+	advance = '\x05', -- ^E
+	escape = '\x06', -- ^F
 }
 
 local function read(fd, sz)
@@ -33,21 +33,6 @@ local function write(fd, buf)
 		until wr or errnum ~= P.EINTR
 		assert(wr, errmsg)
 		written = written + wr
-	end
-end
-
-local function cli(stdin, child)
-	local buf = read(stdin, 512)
-	for i = 1,#buf do
-		local ch = buf:sub(i)
-		if ch == config.next then
-			-- TODO: print next chunk from chunks to the child
-		elseif ch == config.menu then
-			-- TODO: switch to menu mode
-		else
-			-- write interactive input byte by byte
-			write(child, buf:sub(i,i))
-		end
 	end
 end
 
@@ -94,18 +79,45 @@ local function guard(fn)
 	return setmetatable(ret, ret)
 end
 
--- pump raw mode stdin to ptm and ptm to stdout
-local function parent_loop(ptm)
-	local att = assert(P.tcgetattr(P.STDIN_FILENO))
-	-- restore terminal on shutdown
-	local atexit = guard(function()
-		assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, att))
-	end)
-	assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, cfmakeraw(att)))
+local function init_cli(stdin, stdout, child)
+	local mode = 'pump'
+	local pos = 1
+	local handlers = {
+		pump = function(ch)
+			if ch == config.advance then
+				-- write out next chunk
+				write(child, config.chunks[pos])
+				-- restart at 1 after last chunk
+				pos = (pos % #config.chunks) + 1
+			elseif ch == config.escape then
+				write(stdout, '?\b')
+				mode = 'escape'
+			else
+				-- write interactive input byte by byte
+				write(child, ch)
+			end
+		end,
+		escape = function(ch)
+			if ch == config.advance or ch == config.escape then
+				write(child, ch)
+			end
+			write(stdout, ' \b')
+			mode = 'pump'
+		end,
+	}
 
+	return function(buf)
+		local buf = read(stdin, 512)
+		for i = 1,#buf do
+			handlers[mode](buf:sub(i,i))
+		end
+	end
+end
+
+local function parent_loop(ptm, cli)
 	local fds = {
-		[P.STDIN_FILENO] = { events = { IN = true }, revents = {} },
-		[      ptm     ] = { events = { IN = true }, revents = {} },
+		[P.STDIN_FILENO] = {events = { IN = true }},
+		[      ptm     ] = {events = { IN = true }},
 	}
 	while true do
 		local ret, _, errnum = P.poll(fds)
@@ -125,8 +137,9 @@ local function parent_loop(ptm)
 	end
 end
 
-local ptm, ptsp = make_pty()
+if config.chdir then assert(P.chdir(config.chdir)) end
 
+local ptm, ptsp = make_pty()
 -- must handle terminal resize
 local function winch()
 	assert(W.setsize(ptm, assert(W.getsize(P.STDIN_FILENO))))
@@ -135,10 +148,17 @@ winch() -- also set it initially
 
 local pid = assert(P.fork())
 if pid == 0 then
-	if config.chdir then assert(P.chdir(config.chdir)) end
 	assert(P.close(ptm))
 	child_exec(ptsp, config.exec.path, config.exec.argv)
 end
 
 P.signal(W.SIGWINCH, winch) -- NB: there's no SA_RESTART in POSIX
-parent_loop(ptm)
+
+local att = assert(P.tcgetattr(P.STDIN_FILENO))
+-- restore terminal on shutdown
+local atexit = guard(function()
+	assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, att))
+end)
+assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, cfmakeraw(att)))
+
+parent_loop(ptm, init_cli(P.STDIN_FILENO, P.STDOUT_FILENO, ptm))
