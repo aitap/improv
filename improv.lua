@@ -3,11 +3,7 @@ local P = require'posix'
 local W = require'tcwinsize'
 
 local config = {
-	chdir = nil,
-	exec = { path = 'R', argv = {} },
-	chunks = {
-		"ls()\n", "?ls\n", "q()\n"
-	},
+	exec = { argv = {} },
 	advance = '\x05', -- ^E
 	escape = '\x06', -- ^F
 }
@@ -80,29 +76,37 @@ local function guard(fn)
 end
 
 local function init_cli(stdin, stdout, child)
+	-- state
 	local mode = 'pump'
 	local pos = 1
+
+	-- events for both modes
+	local function pump_ch(ch)
+		write(child, ch)
+		mode = 'pump' -- and continue pumping
+	end
+	local pump_handlers = {
+		[config.advance] = function()
+			-- write out next chunk
+			write(child, config.chunks[pos])
+			-- restart at 1 after last chunk
+			pos = (pos % #config.chunks) + 1
+		end,
+		[config.escape] = function()
+			mode = 'escape'
+		end,
+	}
+	local escape_handlers = {
+		[config.advance] = pump_ch,
+		[config.escape] = pump_ch,
+	}
 	local handlers = {
 		pump = function(ch)
-			if ch == config.advance then
-				-- write out next chunk
-				write(child, config.chunks[pos])
-				-- restart at 1 after last chunk
-				pos = (pos % #config.chunks) + 1
-			elseif ch == config.escape then
-				write(stdout, '?\b')
-				mode = 'escape'
-			else
-				-- write interactive input byte by byte
-				write(child, ch)
-			end
+			(pump_handlers[ch] or pump_ch)(ch)
 		end,
 		escape = function(ch)
-			if ch == config.advance or ch == config.escape then
-				write(child, ch)
-			end
-			write(stdout, ' \b')
-			mode = 'pump'
+			local f = escape_handlers[ch]
+			if f then f(ch) else mode = 'pump' end
 		end,
 	}
 
@@ -135,6 +139,54 @@ local function parent_loop(ptm, cli)
 			break
 		end
 	end
+end
+
+if #arg ~= 1 then
+	print(([[Usage: %s config.lua
+
+The config file must assign the following variables:
+
+ * exec:    a table of the following structure:
+   { path = 'command', argv = { [0] = 'argv0', 'arg1', 'arg2', ... } }
+   (exec.argv defaults to an empty table, but path isn't set at all)
+ * chunks:  a table containing pre-programmed chunks to enter
+
+Additionally, you can set the following parameters:
+
+ * chdir:   set the working directoru before executing anything
+ * advance: the key code (as a single byte) to print the next chunk
+            (defaults to %q)
+ * escape:  the escape key code
+            (defaults to %q)]]):format(
+		arg[0], config.advance, config.escape
+	))
+	os.exit(1)
+end
+
+assert(loadfile(arg[1], 'bt', config))()
+for _,p in ipairs{
+	{ type(config.exec) == 'table', 'exec must be a table' },
+	{ type(config.exec.path) == 'string', 'exec.path must be a string' },
+	{ type(config.exec.argv) == 'table', 'exec.argv must be a table' },
+	{
+		type(config.chunks) == 'table' and #config.chunks > 0,
+		'chunks must be a non-empty sequence'
+	},
+	{
+		type(config.chdir) == 'nil' or type(config.chdir) == 'string',
+		'chdir must be a string if set'
+	},
+	{
+		type(config.advance) == 'string' and #config.advance == 1,
+		'advance must be a single-byte string'
+	},
+	{
+		type(config.escape) == 'string' and #config.escape == 1,
+		'escape must be a single-byte string'
+	}
+}
+do
+	assert(p[1], 'config: ' .. p[2])
 end
 
 if config.chdir then assert(P.chdir(config.chdir)) end
