@@ -30,14 +30,14 @@ What does it work with?
 For now, the requirements are:
 
  * A [POSIX] operating system.
-  * On Windows, you can use Cygwin or WSL.
-  * Additionally, the OS must support the `WINCH` signal and the
-    `TIOCGWINSZ`/`TIOCSWINSZ` `ioctl`s on ttys, which (I think) still
-    includes most of them. POSIX [intends to include][POSIX-winsize]
-    terminal size support in a future version, but it's not there yet.
+   * On Windows, you can use Cygwin or WSL.
+   * Additionally, the OS must support the `WINCH` signal and the
+     `TIOCGWINSZ`/`TIOCSWINSZ` `ioctl`s on ttys, which (I think) still
+     includes most of them. POSIX [intends to include][POSIX-winsize]
+     terminal size support in a future version, but it's not there yet.
  * [Lua] 5.3 with the [posix][luaposix] module.
-  * There's no reason for it not to work on Lua 5.4, but I haven't
-    tested that.
+   * There's no reason for it not to work on Lua 5.4, but I haven't
+     tested that.
  * A C compiler to build the C part of the program.
  * The REPL must be a text mode application.
 
@@ -62,11 +62,11 @@ from the first one.
 ### Options
 
  * `exec` must be a table (and is so by default)
-  * `exec.path` must be a string containing the name of a program to
-    launch as a child process. There is no default, so it must be set.
-  * `exec.argv` must be an unnamed table (a sequence in Lua terms)
-    containing the arguments to the child process. It defaults to an
-    empty table. The table can contain the index `[0]`.
+   * `exec.path` must be a string containing the name of a program to
+     launch as a child process. There is no default, so it must be set.
+   * `exec.argv` must be an unnamed table (a sequence in Lua terms)
+     containing the arguments to the child process. It defaults to an
+     empty table. The table can contain the index `[0]`.
  * `chunks` must be an unnamed table (a sequence) containing the strings
    to type into the child process one by one. Must be set; there's no
    default.
