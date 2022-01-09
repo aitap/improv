@@ -78,27 +78,71 @@ end
 local function init_cli(stdin, stdout, child)
 	-- state
 	local mode = 'pump'
+
 	local pos = 1
+	local function pos_next()
+		-- restart at 1 after last chunk
+		pos = (pos % #config.chunks) + 1
+	end
+	local function pos_prev()
+		pos = pos - 1
+		-- restart at N after first chunk
+		if pos == 0 then pos = #config.chunks end
+	end
+
+	local n_prompt = 0
+	local function prompt(str)
+		n_prompt = n_prompt + #str
+		write(stdout, str)
+	end
+	local function unprompt()
+		write(stdout,
+			('\b'):rep(n_prompt)
+			.. (' '):rep(n_prompt)
+			.. ('\b'):rep(n_prompt)
+		)
+		n_prompt = 0
+	end
+
+	local function switch_escape()
+		prompt('?')
+		mode = 'escape'
+	end
+	local function switch_pump()
+		unprompt()
+		mode = 'pump'
+	end
 
 	-- events for both modes
 	local function pump_ch(ch)
 		write(child, ch)
-		mode = 'pump' -- and continue pumping
+		switch_pump()
 	end
 	local pump_handlers = {
 		[config.advance] = function()
 			-- write out next chunk
 			write(child, config.chunks[pos])
-			-- restart at 1 after last chunk
-			pos = (pos % #config.chunks) + 1
+			pos_next()
 		end,
-		[config.escape] = function()
-			mode = 'escape'
-		end,
+		[config.escape] = switch_escape,
 	}
+	local function escape_prev()
+		unprompt()
+		pos_prev()
+		prompt(('%d/%d'):format(pos, #config.chunks))
+	end
+	local function escape_next()
+		unprompt()
+		pos_next()
+		prompt(('%d/%d'):format(pos, #config.chunks))
+	end
 	local escape_handlers = {
 		[config.advance] = pump_ch,
 		[config.escape] = pump_ch,
+		h = escape_prev,
+		j = escape_prev,
+		k = escape_next,
+		l = escape_next,
 	}
 	local handlers = {
 		pump = function(ch)
@@ -106,7 +150,7 @@ local function init_cli(stdin, stdout, child)
 		end,
 		escape = function(ch)
 			local f = escape_handlers[ch]
-			if f then f(ch) else mode = 'pump' end
+			if f then f(ch) else switch_pump() end
 		end,
 	}
 
