@@ -77,6 +77,9 @@ from the first one.
    corresponds to **Ctrl+E**.
  * `escape` sets the key code which switches Improv into escape mode
    (see below). Defaults to `\x06` (**Ctrl+F**).
+ * `delay` sets how many seconds to wait between "typing" each character
+   into the child process, instead of typing the whole chunk
+   instantaneously.
 
 ### Escape mode
 
