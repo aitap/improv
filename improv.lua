@@ -88,35 +88,38 @@ local function init_cli(stdin, stdout, child)
 		end,
 	}
 
-	return function()
+	local function cli()
 		local buf = U.read(stdin, 512)
 		for i = 1,#buf do
 			handlers[mode](buf:sub(i,i))
 		end
 	end
+
+	return function()
+		local fds = {
+			[stdin] = {events = { IN = true }},
+			[child] = {events = { IN = true }},
+		}
+		while true do
+			local ret, _, errnum = P.poll(fds)
+			if ret then
+				if fds[stdin].revents.IN then
+					cli()
+				elseif fds[child].revents.IN then
+					U.write(P.STDOUT_FILENO, U.read(child, 4096))
+				elseif fds[stdin].revents.HUP or fds[child].revents.HUP then
+					-- child exiting or terminal closed
+					break
+				end
+			elseif errnum ~= P.EINTR then
+				-- failure other than "interrupted by signal we handled"
+				break
+			end
+		end
+	end
 end
 
 local function parent_loop(ptm, cli)
-	local fds = {
-		[P.STDIN_FILENO] = {events = { IN = true }},
-		[      ptm     ] = {events = { IN = true }},
-	}
-	while true do
-		local ret, _, errnum = P.poll(fds)
-		if ret then
-			if fds[P.STDIN_FILENO].revents.IN then
-				cli()
-			elseif fds[ptm].revents.IN then
-				U.write(P.STDOUT_FILENO, U.read(ptm, 4096))
-			elseif fds[P.STDIN_FILENO].revents.HUP or fds[ptm].revents.HUP then
-				-- child exiting or terminal closed
-				break
-			end
-		elseif errnum ~= P.EINTR then
-			-- failure other than "interrupted by signal we handled"
-			break
-		end
-	end
 end
 
 if #arg ~= 1 then
@@ -191,4 +194,4 @@ local atexit = U.guard(function()
 end)
 assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, U.cfmakeraw(att)))
 
-parent_loop(ptm, init_cli(P.STDIN_FILENO, P.STDOUT_FILENO, ptm))
+init_cli(P.STDIN_FILENO, P.STDOUT_FILENO, ptm)()
