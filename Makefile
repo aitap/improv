@@ -7,7 +7,7 @@ LDFLAGS = -llua$(LUA_VERSION)
 
 LUASTATIC = ~/.luarocks/bin/luastatic
 
-LUASRC = improv.lua
+LUASRC = improv.lua util.lua
 LUAMOD = \
 	tcwinsize.a \
 	posix/_argcheck.lua posix/compat.lua posix/deprecated.lua \

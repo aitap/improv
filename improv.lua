@@ -1,79 +1,13 @@
 #!/usr/bin/lua5.3
 local P = require'posix'
 local W = require'tcwinsize'
+local U = require'util'
 
 local config = {
 	exec = { argv = {} },
 	advance = '\x05', -- ^E
 	escape = '\x06', -- ^F
 }
-
-local function read(fd, sz)
-	local buf, errmsg
-	repeat
-		local errnum
-		buf, errmsg, errnum = P.read(fd, sz)
-	until buf or errnum ~= P.EINTR
-	assert(buf, errmsg)
-	return buf
-end
-
--- keep trying until all of buf is written to the fd
-local function write(fd, buf)
-	local written = 0
-	while written < #buf do
-		local wr, errmsg
-		repeat
-			local errnum
-			wr, errmsg, errnum = P.write(fd, buf:sub(written + 1))
-		until wr or errnum ~= P.EINTR
-		assert(wr, errmsg)
-		written = written + wr
-	end
-end
-
--- return master PTY file descriptor, but slave PTY path
-local function make_pty()
-	local ptm = P.openpt(P.O_RDWR|P.O_NOCTTY)
-	assert(P.grantpt(ptm))
-	assert(P.unlockpt(ptm))
-	local ptsp = assert(P.ptsname(ptm))
-	return ptm, ptsp
-end
-
--- exec child process with stdio connected to a given TTY
-local function child_exec(ptsp, path, args)
-	assert(P.setpid('s')) -- setsid()
-	local pts = assert(P.open(ptsp, P.O_RDWR)) -- set the controlling TTY
-	assert(P.dup2(pts, P.STDIN_FILENO))
-	assert(P.dup2(pts, P.STDOUT_FILENO))
-	assert(P.dup2(pts, P.STDERR_FILENO))
-	assert(P.execp(path, args))
-end
-
--- return termios table modified for raw mode
-local function cfmakeraw(att)
-	return {
-		cc = att.cc,
-		cflag = att.cflag & ~(P.CSIZE | P.PARENB) | P.CS8,
-		iflag = att.iflag & ~(
-			P.IGNBRK | P.BRKINT | P.PARMRK | P.ISTRIP | P.INLCR
-			| P.IGNCR | P.ICRNL | P.IXON
-		),
-		lflag = att.lflag & ~(
-			P.ECHO | P.ECHONL | P.ICANON | P.ISIG | P.IEXTEN
-		),
-		oflag = att.oflag & ~P.OPOST,
-		ispeed = att.ispeed,
-		ospeed = att.ospeed
-	}
-end
-
--- run fn() when garbage-collecting the return value
-local function guard(fn)
-	local ret = {__gc = fn}
-	return setmetatable(ret, ret)
-end
 
 local function init_cli(stdin, stdout, child)
 	-- state
@@ -93,10 +27,10 @@ local function init_cli(stdin, stdout, child)
 	local n_prompt = 0
 	local function prompt(str)
 		n_prompt = n_prompt + #str
-		write(stdout, str)
+		U.write(stdout, str)
 	end
 	local function unprompt()
-		write(stdout,
+		U.write(stdout,
 			('\b'):rep(n_prompt)
 			.. (' '):rep(n_prompt)
 			.. ('\b'):rep(n_prompt)
@@ -115,13 +49,13 @@ local function init_cli(stdin, stdout, child)
 
 	-- events for both modes
 	local function pump_ch(ch)
-		write(child, ch)
+		U.write(child, ch)
 		switch_pump()
 	end
 	local pump_handlers = {
 		[config.advance] = function()
 			-- write out next chunk
-			write(child, config.chunks[pos])
+			U.write(child, config.chunks[pos])
 			pos_next()
 		end,
 		[config.escape] = switch_escape,
@@ -155,7 +89,7 @@ local function init_cli(stdin, stdout, child)
 	}
 
 	return function()
-		local buf = read(stdin, 512)
+		local buf = U.read(stdin, 512)
 		for i = 1,#buf do
 			handlers[mode](buf:sub(i,i))
 		end
@@ -173,7 +107,7 @@ local function parent_loop(ptm, cli)
 			if fds[P.STDIN_FILENO].revents.IN then
 				cli()
 			elseif fds[ptm].revents.IN then
-				write(P.STDOUT_FILENO, read(ptm, 4096))
+				U.write(P.STDOUT_FILENO, U.read(ptm, 4096))
 			elseif fds[P.STDIN_FILENO].revents.HUP or fds[ptm].revents.HUP then
 				-- child exiting or terminal closed
 				break
@@ -235,7 +169,7 @@ end
 
 if config.chdir then assert(P.chdir(config.chdir)) end
 
-local ptm, ptsp = make_pty()
+local ptm, ptsp = U.make_pty()
 -- must handle terminal resize
 local function winch()
 	assert(W.setsize(ptm, assert(W.getsize(P.STDIN_FILENO))))
@@ -245,16 +179,16 @@ winch() -- also set it initially
 local pid = assert(P.fork())
 if pid == 0 then
 	assert(P.close(ptm))
-	child_exec(ptsp, config.exec.path, config.exec.argv)
+	U.child_exec(ptsp, config.exec.path, config.exec.argv)
 end
 
 P.signal(W.SIGWINCH, winch) -- NB: there's no SA_RESTART in POSIX
 
 local att = assert(P.tcgetattr(P.STDIN_FILENO))
 -- restore terminal on shutdown
-local atexit = guard(function()
+local atexit = U.guard(function()
 	assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, att))
 end)
-assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, cfmakeraw(att)))
+assert(P.tcsetattr(P.STDIN_FILENO, P.TCSANOW, U.cfmakeraw(att)))
 
 parent_loop(ptm, init_cli(P.STDIN_FILENO, P.STDOUT_FILENO, ptm))
