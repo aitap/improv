@@ -154,7 +154,7 @@ local function init_cli(stdin, stdout, child)
 		end,
 	}
 
-	return function(buf)
+	return function()
 		local buf = read(stdin, 512)
 		for i = 1,#buf do
 			handlers[mode](buf:sub(i,i))
@@ -171,7 +171,7 @@ local function parent_loop(ptm, cli)
 		local ret, _, errnum = P.poll(fds)
 		if ret then
 			if fds[P.STDIN_FILENO].revents.IN then
-				cli(P.STDIN_FILENO, ptm)
+				cli()
 			elseif fds[ptm].revents.IN then
 				write(P.STDOUT_FILENO, read(ptm, 4096))
 			elseif fds[P.STDIN_FILENO].revents.HUP or fds[ptm].revents.HUP then
