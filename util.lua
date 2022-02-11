@@ -1,4 +1,5 @@
 local P = require'posix'
+P.time = require'posix.time'
 local U = {}
 
 function U.read(fd, sz)
@@ -66,6 +67,11 @@ end
 function U.guard(fn)
 	local ret = {__gc = fn}
 	return setmetatable(ret, ret)
+end
+
+function U.monotime()
+	local t = P.time.clock_gettime(P.CLOCK_MONOTONIC)
+	return t.tv_sec + t.tv_nsec/1e9
 end
 
 return U

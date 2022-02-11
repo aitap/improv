@@ -7,6 +7,7 @@ local config = {
 	exec = { argv = {} },
 	advance = '\x05', -- ^E
 	escape = '\x06', -- ^F
+	delay = .01,
 }
 
 local function init_cli(stdin, stdout, child)
@@ -22,6 +23,17 @@ local function init_cli(stdin, stdout, child)
 		pos = pos - 1
 		-- restart at N after first chunk
 		if pos == 0 then pos = #config.chunks end
+	end
+
+	local queue = '' -- TODO: making it a table would be faster
+	local delay_remaining = -1
+	local function enqueue(str)
+		queue = queue .. str
+	end
+	local function dequeue_one()
+		U.write(child, queue:sub(1,1))
+		queue = queue:sub(2)
+		delay_remaining = config.delay
 	end
 
 	local n_prompt = 0
@@ -55,7 +67,7 @@ local function init_cli(stdin, stdout, child)
 	local pump_handlers = {
 		[config.advance] = function()
 			-- write out next chunk
-			U.write(child, config.chunks[pos])
+			enqueue(config.chunks[pos])
 			pos_next()
 		end,
 		[config.escape] = switch_escape,
@@ -97,29 +109,33 @@ local function init_cli(stdin, stdout, child)
 
 	return function()
 		local fds = {
-			[stdin] = {events = { IN = true }},
-			[child] = {events = { IN = true }},
+			[stdin] = {events = {IN = true}},
+			[child] = {events = {IN = true}},
 		}
 		while true do
-			local ret, _, errnum = P.poll(fds)
+			local timeout = (#queue > 0)
+				and math.tointeger(delay_remaining * 1000 // 1) or -1
+			local dt = U.monotime()
+			local ret, _, errnum = P.poll(fds, timeout)
+			delay_remaining = delay_remaining - (U.monotime() - dt)
 			if ret then
-				if fds[stdin].revents.IN then
-					cli()
-				elseif fds[child].revents.IN then
-					U.write(P.STDOUT_FILENO, U.read(child, 4096))
-				elseif fds[stdin].revents.HUP or fds[child].revents.HUP then
-					-- child exiting or terminal closed
-					break
+				if ret > 0 then
+					if fds[stdin].revents.IN then
+						cli()
+					elseif fds[child].revents.IN then
+						U.write(stdout, U.read(child, 4096))
+					elseif fds[stdin].revents.HUP or fds[child].revents.HUP then
+						-- child exiting or terminal closed
+						break
+					end
 				end
+				if #queue > 0 and delay_remaining <= 0 then dequeue_one() end
 			elseif errnum ~= P.EINTR then
 				-- failure other than "interrupted by signal we handled"
 				break
 			end
 		end
 	end
-end
-
-local function parent_loop(ptm, cli)
 end
 
 if #arg ~= 1 then
@@ -138,8 +154,10 @@ Additionally, you can set the following parameters:
  * advance: the key code (as a single byte) to print the next chunk
             (defaults to %q)
  * escape:  the escape key code
-            (defaults to %q)]]):format(
-		arg[0], config.advance, config.escape
+            (defaults to %q)
+ * delay:   delay between bytes typed into the child process, s
+            (defaults to %g)]]):format(
+		arg[0], config.advance, config.escape, config.delay
 	))
 	os.exit(1)
 end
@@ -164,7 +182,11 @@ for _,p in ipairs{
 	{
 		type(config.escape) == 'string' and #config.escape == 1,
 		'escape must be a single-byte string'
-	}
+	},
+	{
+		type(config.delay) == 'number',
+		'delay must be a number'
+	},
 }
 do
 	assert(p[1], 'config: ' .. p[2])
