@@ -1,4 +1,34 @@
 #!/usr/bin/lua5.3
+if arg then
+	-- thanks to David Manura's findbin package for inspiration
+	--[[
+		Package.config contains the directory separator, path separator,
+		and the substitution character to be interpreted in package.c?path.
+	]]
+	local pkgcfg = {}
+	for c in package.config:gmatch('[^\n]+') do
+		table.insert(pkgcfg, c)
+	end
+	local dirsep, pathsep, subst  = table.unpack(pkgcfg) -- the first 3
+
+	--[[
+		The script name, including the path it's being launched as, goes
+		to the index 0. We assume that by chopping off everything after the
+		last directory separator, we get the script path.
+	]]
+	local selfdir = arg[0]:gsub('[^' .. dirsep .. ']*$', '', 1)
+	-- no path means the current directory
+	if #selfdir == 0 then selfdir = './' end
+	package.path = selfdir .. subst .. '.lua' .. pathsep .. package.path
+	package.cpath = selfdir
+		--[[
+			Here we hopefully get the shared object suffix as the part that
+			starts with the substitution character of the last entry.
+		]]
+		.. package.cpath:match('(%' .. subst .. '[^' .. subst ..  ']*' .. ')$')
+		.. pathsep .. package.cpath
+end
+
 local P = require'posix'
 local W = require'tcwinsize'
 local U = require'util'
@@ -7,7 +37,7 @@ local config = {
 	exec = { argv = {} },
 	advance = '\x05', -- ^E
 	escape = '\x06', -- ^F
-	delay = .01,
+	delay = .025,
 }
 
 local function init_cli(stdin, stdout, child)

@@ -79,7 +79,7 @@ from the first one.
    (see below). Defaults to `\x06` (**Ctrl+F**).
  * `delay` sets how many seconds to wait between "typing" each character
    into the child process, instead of typing the whole chunk
-   instantaneously.
+   instantaneously. Defaults to `0.025`.
 
 ### Escape mode
 
