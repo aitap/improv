@@ -44,6 +44,21 @@ For now, the requirements are:
 How to use it?
 --------------
 
+### Compilation
+
+Since terminal window size support is currently missing in POSIX, we
+need a separate module to work with it. Compile `tcwinsize.c` into a
+shared object; make sure to provide the Lua include files to the
+compiler and link the shared object with the Lua shared library.
+
+On an `amd64` Debian system with `liblua5.3-dev` and `lua-posix`
+installed you can use `make` to build `tcwinsize.so`. Additionally, if
+you install `lua-posix-dev` and [`luastatic`][luastatic] from
+[`luarocks`][luarocks-luastatic], you can also build a static binary
+with `make improv`.
+
+### Running
+
 Create a configuration file (Lua syntax) specifying what to launch and
 the text chunks to type inside it. A minimal example would be:
 
@@ -132,3 +147,5 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 [luaposix]: http://luaposix.github.io/luaposix/
 [POSIX]: https://pubs.opengroup.org/onlinepubs/9699919799/
 [POSIX-winsize]: https://austingroupbugs.net/view.php?id=1151
+[luastatic]: https://github.com/ers35/luastatic
+[luarocks-luastatic]: https://luarocks.org/modules/ers35/luastatic
