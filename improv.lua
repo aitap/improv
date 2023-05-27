@@ -180,7 +180,7 @@ The config file must assign the following variables:
 
 Additionally, you can set the following parameters:
 
- * chdir:   set the working directoru before executing anything
+ * chdir:   set the working directory before executing anything
  * advance: the key code (as a single byte) to print the next chunk
             (defaults to %q)
  * escape:  the escape key code
