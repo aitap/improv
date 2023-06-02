@@ -28,5 +28,5 @@ posix/%.lua: /usr/share/lua/$(LUA_VERSION)/posix/%.lua
 # but make it possible to link a mostly-static binary if needed
 improv: $(LUASRC) $(LUAMOD)
 	$(LUASTATIC) $(LUASRC) $(LUAMOD) $(CFLAGS)
-# avoid confusing Make into building improv.lua from improv.lua.c
-	rm improv.lua.c
+# avoid confusing Make into building improv.lua from improv.lua(static)?.c
+	-rm -vf improv.lua.c improv.luastatic.c
