@@ -105,12 +105,18 @@ local function init_cli(stdin, stdout, child)
 	local function escape_prev()
 		unprompt()
 		pos_prev()
-		prompt(('%d/%d'):format(pos, #config.chunks))
+		prompt(('%d/%d[%s]'):format(
+			pos, #config.chunks,
+			U.exerpt(config.chunks[pos])
+		))
 	end
 	local function escape_next()
 		unprompt()
 		pos_next()
-		prompt(('%d/%d'):format(pos, #config.chunks))
+		prompt(('%d/%d[%s]'):format(
+			pos, #config.chunks,
+			U.exerpt(config.chunks[pos])
+		))
 	end
 	local escape_handlers = {
 		[config.advance] = pump_ch,
