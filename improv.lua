@@ -107,7 +107,7 @@ local function init_cli(stdin, stdout, child)
 		pos_prev()
 		prompt(('%d/%d[%s]'):format(
 			pos, #config.chunks,
-			U.exerpt(config.chunks[pos])
+			U.excerpt(config.chunks[pos])
 		))
 	end
 	local function escape_next()
@@ -115,7 +115,7 @@ local function init_cli(stdin, stdout, child)
 		pos_next()
 		prompt(('%d/%d[%s]'):format(
 			pos, #config.chunks,
-			U.exerpt(config.chunks[pos])
+			U.excerpt(config.chunks[pos])
 		))
 	end
 	local escape_handlers = {

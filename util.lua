@@ -74,7 +74,7 @@ function U.monotime()
 	return t.tv_sec + t.tv_nsec/1e9
 end
 
-function U.exerpt(src)
+function U.excerpt(src)
 	return src:sub(1, 32):gsub('%c', function(c)
 		return ({['\n']='\\n'})[c] or ('\\x%02x'):format(c:byte())
 	end)
