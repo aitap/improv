@@ -96,6 +96,9 @@ local function init_cli(stdin, stdout, child)
 	end
 	local pump_handlers = {
 		[config.advance] = function()
+			if config.period then
+				config.delay = config.period/#config.chunks[pos]
+			end
 			-- write out next chunk
 			enqueue(config.chunks[pos])
 			pos_next()
@@ -192,7 +195,10 @@ Additionally, you can set the following parameters:
  * escape:  the escape key code
             (defaults to %q)
  * delay:   delay between bytes typed into the child process, s
-            (defaults to %g)]]):format(
+            (defaults to %g)
+ * period:  type the whole chunk in a given number of seconds,
+            adjusting the inter-character delay accordingly
+            (unset by default)]]):format(
 		arg[0], config.advance, config.escape, config.delay
 	))
 	os.exit(1)

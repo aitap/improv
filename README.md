@@ -95,6 +95,8 @@ from the first one.
  * `delay` sets how many seconds to wait between "typing" each character
    into the child process, instead of typing the whole chunk
    instantaneously. Defaults to `0.025`.
+ * `period` sets how many seconds to take when "typing" a whole chunk,
+   overriding `delay` if set. Defaults to `nil` (unset).
 
 ### Escape mode
 
