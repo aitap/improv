@@ -86,7 +86,9 @@ from the first one.
    to type into the child process one by one. Must be set; there's no
    default.
  * `chdir` can be a string to set the working directory before starting
-   the child process. Optional parameter.
+   the child process or `true` in order to switch to the directory
+   containing the configuration file. Optional parameter, defaults to
+   `nil`.
  * `advance` sets the key code which makes Improv type the next chunk.
    It must be a single-byte string. Defaults to `\x05`, which typically
    corresponds to **Ctrl+E**.
