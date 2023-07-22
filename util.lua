@@ -81,4 +81,20 @@ function U.excerpt(src)
 	.. (#src > 32 and '...' or '')
 end
 
+function U.dirname(path)
+	assert(path ~= '', 'cannot give dirname() for an empty path')
+	-- normalise separators
+	path = path:gsub('/+', '/')
+	-- root directory has no parent
+	if path == '/' then return '/' end
+	-- avoid the terminating directory separator
+	path = path:gsub('/$', '', 1)
+	-- no directory separators? must be a relative path
+	if not path:match('/') then return '.' end
+	-- has directory separators, drop one level
+	path = path:gsub('/[^/]+$', '', 1)
+	-- an absolute path could have been reduced to nothing, fix it
+	return path == '' and '/' or path
+end
+
 return U

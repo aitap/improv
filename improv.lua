@@ -190,6 +190,8 @@ The config file must assign the following variables:
 Additionally, you can set the following parameters:
 
  * chdir:   set the working directory before executing anything
+            (can be either a string signifying the desired path or true,
+            in which case the destination is dirname(configfile))
  * advance: the key code (as a single byte) to print the next chunk
             (defaults to %q)
  * escape:  the escape key code
@@ -214,8 +216,9 @@ for _,p in ipairs{
 		'chunks must be a non-empty sequence'
 	},
 	{
-		type(config.chdir) == 'nil' or type(config.chdir) == 'string',
-		'chdir must be a string if set'
+		type(config.chdir) == 'nil' or type(config.chdir) == 'string'
+		or type(config.chdir) == 'boolean',
+		'chdir must be a string or a boolean if set'
 	},
 	{
 		type(config.advance) == 'string' and #config.advance == 1,
@@ -234,7 +237,13 @@ do
 	assert(p[1], 'config: ' .. p[2])
 end
 
-if config.chdir then assert(P.chdir(config.chdir)) end
+if config.chdir then
+	if type(config.chdir) == 'string' then
+		assert(P.chdir(config.chdir))
+	else
+		assert(P.chdir(U.dirname(arg[1])))
+	end
+end
 
 local ptm, ptsp = U.make_pty()
 -- must handle terminal resize
